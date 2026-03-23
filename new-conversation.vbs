@@ -1,6 +1,6 @@
 Option Explicit
 
-Dim fso, shell, scriptDir, envPath, conversationsDir, topic, slug, today, folderName, convPath
+Dim fso, shell, scriptDir, envPath, conversationsDir, topic, slug, today, folderName, convPath, useGsd
 
 Set fso = CreateObject("Scripting.FileSystemObject")
 Set shell = CreateObject("WScript.Shell")
@@ -32,11 +32,94 @@ If Not fso.FolderExists(conversationsDir) Then
     fso.CreateFolder(conversationsDir)
 End If
 
-' Ask for topic
-topic = InputBox("Sujet de la conversation (laisser vide pour aucun) :", "Nouvelle conversation Claude Code", "")
+' Show dialog via temporary HTA
+Dim htaPath, resultPath, htaFile, resultFile, resultContent, resultLines
+htaPath = scriptDir & "\~new-conv-dialog.hta"
+resultPath = scriptDir & "\~new-conv-result.tmp"
 
-' User cancelled
-If IsEmpty(topic) Then WScript.Quit
+' Clean up any previous result file
+If fso.FileExists(resultPath) Then fso.DeleteFile(resultPath)
+
+Set htaFile = fso.CreateTextFile(htaPath, True)
+htaFile.Write "<html>" & vbCrLf & _
+    "<head>" & vbCrLf & _
+    "<title>Nouvelle conversation Claude Code</title>" & vbCrLf & _
+    "<HTA:APPLICATION ID=""oHTA"" BORDER=""thin"" BORDERSTYLE=""normal"" " & _
+    "INNERBORDER=""no"" SCROLL=""no"" MAXIMIZEBUTTON=""no"" MINIMIZEBUTTON=""no"" " & _
+    "SYSMENU=""yes"" SELECTION=""no"" SINGLEINSTANCE=""yes"" />" & vbCrLf & _
+    "<style>" & vbCrLf & _
+    "body { font-family: Segoe UI, sans-serif; font-size: 14px; padding: 20px; " & _
+    "background: #f5f5f5; margin: 0; }" & vbCrLf & _
+    "label { display: block; margin-bottom: 6px; font-weight: 600; }" & vbCrLf & _
+    "input[type=text] { width: 100%; padding: 8px; font-size: 14px; " & _
+    "border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }" & vbCrLf & _
+    ".checkbox-row { margin-top: 14px; display: flex; align-items: center; gap: 8px; }" & vbCrLf & _
+    ".checkbox-row input { width: 18px; height: 18px; margin: 0; }" & vbCrLf & _
+    ".checkbox-row label { display: inline; font-weight: normal; margin: 0; }" & vbCrLf & _
+    ".buttons { margin-top: 20px; text-align: right; }" & vbCrLf & _
+    "button { padding: 8px 20px; font-size: 14px; border: 1px solid #999; " & _
+    "border-radius: 4px; cursor: pointer; margin-left: 8px; }" & vbCrLf & _
+    ".btn-ok { background: #0078d4; color: white; border-color: #0078d4; }" & vbCrLf & _
+    ".btn-ok:hover { background: #106ebe; }" & vbCrLf & _
+    ".btn-cancel { background: #e5e5e5; }" & vbCrLf & _
+    ".btn-cancel:hover { background: #d0d0d0; }" & vbCrLf & _
+    "</style>" & vbCrLf & _
+    "<script language=""VBScript"">" & vbCrLf & _
+    "Sub Window_OnLoad" & vbCrLf & _
+    "  window.resizeTo 460, 250" & vbCrLf & _
+    "  Dim sl, st" & vbCrLf & _
+    "  sl = CInt((screen.width - 460) / 2)" & vbCrLf & _
+    "  st = CInt((screen.height - 250) / 2)" & vbCrLf & _
+    "  window.moveTo sl, st" & vbCrLf & _
+    "  document.getElementById(""topic"").focus" & vbCrLf & _
+    "End Sub" & vbCrLf & _
+    "Sub DoOK" & vbCrLf & _
+    "  Dim f, t, g" & vbCrLf & _
+    "  t = document.getElementById(""topic"").value" & vbCrLf & _
+    "  If document.getElementById(""gsd"").checked Then g = ""1"" Else g = ""0"" End If" & vbCrLf & _
+    "  Set f = CreateObject(""Scripting.FileSystemObject"").CreateTextFile(""" & Replace(resultPath, "\", "\\") & """, True)" & vbCrLf & _
+    "  f.WriteLine t" & vbCrLf & _
+    "  f.WriteLine g" & vbCrLf & _
+    "  f.Close" & vbCrLf & _
+    "  self.close" & vbCrLf & _
+    "End Sub" & vbCrLf & _
+    "Sub DoCancel" & vbCrLf & _
+    "  self.close" & vbCrLf & _
+    "End Sub" & vbCrLf & _
+    "Sub OnKeyPress" & vbCrLf & _
+    "  If window.event.keyCode = 13 Then DoOK" & vbCrLf & _
+    "  If window.event.keyCode = 27 Then DoCancel" & vbCrLf & _
+    "End Sub" & vbCrLf & _
+    "</script>" & vbCrLf & _
+    "</head>" & vbCrLf & _
+    "<body onkeypress=""OnKeyPress"">" & vbCrLf & _
+    "<label for=""topic"">Sujet de la conversation (laisser vide pour aucun) :</label>" & vbCrLf & _
+    "<input type=""text"" id=""topic"" />" & vbCrLf & _
+    "<div class=""checkbox-row"">" & vbCrLf & _
+    "<input type=""checkbox"" id=""gsd"" />" & vbCrLf & _
+    "<label for=""gsd"">Utiliser GSD (Get Shit Done)</label>" & vbCrLf & _
+    "</div>" & vbCrLf & _
+    "<div class=""buttons"">" & vbCrLf & _
+    "<button class=""btn-cancel"" onclick=""DoCancel"">Annuler</button>" & vbCrLf & _
+    "<button class=""btn-ok"" onclick=""DoOK"">OK</button>" & vbCrLf & _
+    "</div>" & vbCrLf & _
+    "</body></html>"
+htaFile.Close
+
+' Run HTA and wait for it to finish
+shell.Run "mshta """ & htaPath & """", 1, True
+
+' Clean up HTA file
+If fso.FileExists(htaPath) Then fso.DeleteFile(htaPath)
+
+' Read result (if user cancelled, no result file exists)
+If Not fso.FileExists(resultPath) Then WScript.Quit
+
+Set resultFile = fso.OpenTextFile(resultPath, 1)
+topic = resultFile.ReadLine
+useGsd = resultFile.ReadLine
+resultFile.Close
+fso.DeleteFile(resultPath)
 
 ' Build date
 today = Year(Now) & "-" & Right("0" & Month(Now), 2) & "-" & Right("0" & Day(Now), 2)
@@ -50,13 +133,13 @@ If fso.FolderExists(conversationsDir) Then
     For Each folder In convFolder.SubFolders
         If Left(folder.Name, Len(today)) = today Then
             ' Extract index from folder name (format: YYYY-MM-DD_NN or YYYY-MM-DD_NN_slug)
-            Dim parts, folderIdx
-            parts = Split(folder.Name, "_")
-            ' parts(0)=YYYY-MM-DD, parts(1)=NN, parts(2...)=slug
-            ' Date contains dashes not underscores, so parts(0) is the full date
-            If UBound(parts) >= 1 Then
-                If IsNumeric(parts(1)) Then
-                    folderIdx = CInt(parts(1))
+            Dim folderParts, folderIdx
+            folderParts = Split(folder.Name, "_")
+            ' folderParts(0)=YYYY-MM-DD, folderParts(1)=NN, folderParts(2...)=slug
+            ' Date contains dashes not underscores, so folderParts(0) is the full date
+            If UBound(folderParts) >= 1 Then
+                If IsNumeric(folderParts(1)) Then
+                    folderIdx = CInt(folderParts(1))
                     If folderIdx >= idx Then idx = folderIdx + 1
                 End If
             End If
@@ -134,6 +217,11 @@ tasksFile.WriteLine "    }"
 tasksFile.WriteLine "  ]"
 tasksFile.WriteLine "}"
 tasksFile.Close
+
+' Install GSD if requested
+If useGsd = "1" Then
+    shell.Run "cmd /c cd /d """ & convPath & """ && npx -y get-shit-done-cc@latest --claude --local", 1, True
+End If
 
 ' Open VS Code
 shell.Run """code"" """ & convPath & """", 0, False
