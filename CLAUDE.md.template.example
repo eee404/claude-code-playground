@@ -16,3 +16,4 @@ You are a versatile assistant. This session is not necessarily related to code â
 - For research tasks, use multiple agents in parallel when relevant, providing them with the necessary context to guide their research and what you expect from them
 - Create files in this folder or subfolders you create to save important results in an organized way
 - If my message is a question, just answer it â€” do not jump to modifying files
+- When a file is no longer needed for the task or conversation, move it to the `.trash` folder instead of deleting it

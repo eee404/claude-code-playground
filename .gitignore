@@ -1,2 +1,4 @@
 .env
 conversations/
+CLAUDE.md.template
+.trash

@@ -184,6 +184,7 @@ convPath = conversationsDir & "\" & folderName
 
 ' Create folder
 fso.CreateFolder(convPath)
+fso.CreateFolder(convPath & "\.trash")
 
 ' Copy CLAUDE.md template
 If fso.FileExists(scriptDir & "\CLAUDE.md.template") Then
